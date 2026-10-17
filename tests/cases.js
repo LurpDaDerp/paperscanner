@@ -18,6 +18,23 @@ export function buildCases(W, H) {
   return cases;
 }
 
+// Uneven lighting, and pages lying on desks next to other objects.
+export function buildLightingCases(W, H, seed = 77) {
+  const cases = [];
+  const rand = rng(seed);
+  const bgs = ['dark', 'light', 'cluttered', 'desk', 'whitedesk'];
+  const lights = ['gradient', 'spot', 'shadow', 'blob'];
+  for (let i = 0; i < 40; i++) {
+    const bg = bgs[i % bgs.length];
+    const desk = bg === 'desk' || bg === 'whitedesk';
+    cases.push({ bg, hands: !desk, light: lights[Math.floor(i / 5) % 4], quad: randomQuad(rand, W, H, { size: desk ? [0.5, 0.75] : [0.5, 0.9] }) });
+  }
+  for (let i = 0; i < 10; i++) {
+    cases.push({ bg: i % 2 ? 'desk' : 'whitedesk', hands: false, quad: randomQuad(rand, W, H, { size: [0.45, 0.75] }) });
+  }
+  return cases;
+}
+
 export function buildNegatives() {
   return [
     { bg: 'dark', quad: null },

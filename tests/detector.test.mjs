@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { Detector } from '../src/scan/detect.js';
 import { alignQuad, dist } from '../src/scan/geometry.js';
 import { locatePage } from '../src/scan/pipeline.js';
-import { buildCases, buildNegatives } from './cases.js';
+import { buildCases, buildLightingCases, buildNegatives } from './cases.js';
 import { renderScene } from './synth.js';
 
 const require = createRequire(import.meta.url);
@@ -63,6 +63,33 @@ console.log(`Positive scenes: ${cases.length}, detected ${cases.length - missed}
 console.log(`Corner error (px): mean ${mean.toFixed(2)}, p95 ${p95.toFixed(2)}, max ${max.toFixed(2)}`);
 if (missed > 0) failures++;
 if (mean > 0.5 || p95 > 1.5 || max > 3) failures++;
+
+// Uneven lighting (gradients, lamps, shadows across the page) and pages lying
+// on notebooks next to pens. Up to two extreme scenes may fail (one has page
+// and table both blown out to pure white under a lamp).
+const lighting = buildLightingCases(W, H);
+const lightErrors = [];
+let lightBad = 0;
+lighting.forEach((scene, i) => {
+  const truth = scene.quad.map((p) => ({ x: p.x - 0.5, y: p.y - 0.5 }));
+  const found = run({ ...scene, seed: 5000 + i });
+  const label = [scene.bg, scene.light].filter(Boolean).join(', ');
+  if (!found) {
+    lightBad++;
+    console.log(`  lighting ${i} (${label}): NOT DETECTED`);
+    return;
+  }
+  const q = alignQuad(truth, found);
+  const max = Math.max(...q.map((p, k) => dist(p, truth[k])));
+  if (max > 3) {
+    lightBad++;
+    console.log(`  lighting ${i} (${label}): max corner error ${max.toFixed(2)}px`);
+  } else lightErrors.push(max);
+});
+lightErrors.sort((a, b) => a - b);
+console.log(`Lighting scenes: ${lighting.length}, located ${lighting.length - lightBad}`);
+console.log(`Max corner error (px): median ${lightErrors[lightErrors.length >> 1].toFixed(2)}, p90 ${lightErrors[Math.floor(lightErrors.length * 0.9)].toFixed(2)}`);
+if (lightBad > 2) failures++;
 
 const negatives = buildNegatives();
 negatives.forEach((scene, i) => {

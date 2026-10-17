@@ -1,6 +1,7 @@
 // Document edge detection. Environment-agnostic: works on any ImageData-like
 // object ({ data, width, height }) so it runs in the browser and in Node tests.
 import {
+  alignQuad,
   dist,
   fitLine,
   intersectLines,
@@ -36,6 +37,21 @@ function toChannels({ data, width, height }) {
 }
 
 
+// Divides out the scene illumination: each pixel relative to the brightest
+// surface nearby (a blurred max filter), so a page edge in a shadow has the
+// same contrast as one in full light. Very dark areas are not amplified much.
+function normalizeLighting(cv, src, track) {
+  const light = track(new cv.Mat());
+  const k = Math.max(5, Math.round(0.02 * Math.max(src.cols, src.rows))) | 1;
+  cv.dilate(src, light, track(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(k, k))));
+  cv.blur(light, light, new cv.Size(2 * k + 1, 2 * k + 1));
+  const s = src.data;
+  const l = light.data;
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = Math.min(255, (s[i] * 240) / Math.max(l[i], 48));
+  return out;
+}
+
 // Bilinear interpolation of a point inside a quad at (u, v) in [0, 1]^2.
 function quadPoint(q, u, v) {
   const top = { x: q[0].x + (q[1].x - q[0].x) * u, y: q[0].y + (q[1].y - q[0].y) * u };
@@ -59,101 +75,206 @@ function meanInside(channel, width, height, q) {
   return count ? sum / count : 0;
 }
 
+// Brightness step across a page side at (x, y): inside minus outside, in
+// whichever channel shows the larger step. `n` is the outward normal. Returns
+// 0 unless an edge pixel lies nearby and the step is clear.
+function sideStep(frame, x, y, nx, ny) {
+  const { edges, gray, white, norm, width, height } = frame;
+  const cx = Math.round(x);
+  const cy = Math.round(y);
+  let hit = false;
+  for (let yy = cy - 1; yy <= cy + 1 && !hit; yy++) {
+    if (yy < 0 || yy >= height) continue;
+    for (let xx = cx - 1; xx <= cx + 1 && !hit; xx++) hit = xx >= 0 && xx < width && edges[yy * width + xx] > 0;
+  }
+  if (!hit) return 0;
+  const ix = Math.round(x - 3 * nx);
+  const iy = Math.round(y - 3 * ny);
+  const ox = Math.round(x + 3 * nx);
+  const oy = Math.round(y + 3 * ny);
+  if (ix < 0 || iy < 0 || ix >= width || iy >= height || ox < 0 || oy < 0 || ox >= width || oy >= height) return 0;
+  const i = iy * width + ix;
+  const o = oy * width + ox;
+  let d = gray[i] - gray[o];
+  if (Math.abs(white[i] - white[o]) > Math.abs(d)) d = white[i] - white[o];
+  if (Math.abs(norm[i] - norm[o]) > Math.abs(d)) d = norm[i] - norm[o];
+  return Math.abs(d) >= 8 ? d : 0;
+}
+
+// Unit normal of side a-b pointing away from the quad centre c.
+function outwardNormal(a, b, c) {
+  const len = dist(a, b) || 1;
+  let nx = -(b.y - a.y) / len;
+  let ny = (b.x - a.x) / len;
+  if (nx * ((a.x + b.x) / 2 - c.x) + ny * ((a.y + b.y) / 2 - c.y) < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  return { nx, ny };
+}
+
+const centre = (q) => ({ x: (q[0].x + q[1].x + q[2].x + q[3].x) / 4, y: (q[0].y + q[1].y + q[2].y + q[3].y) / 4 });
+
 // Fraction of each side backed by a real page edge: an edge pixel nearby and
 // a brightness step across the side with the same polarity as the rest of
 // that side. Text lines crossed by a fake side fail the polarity test.
 export function edgeSupport(frame, q, N = 48) {
-  const { edges, gray, white, width, height } = frame;
-  const cx = (q[0].x + q[1].x + q[2].x + q[3].x) / 4;
-  const cy = (q[0].y + q[1].y + q[2].y + q[3].y) / 4;
-  const at = (ch, x, y) => {
-    const xx = Math.round(x);
-    const yy = Math.round(y);
-    return xx >= 0 && yy >= 0 && xx < width && yy < height ? ch[yy * width + xx] : -1;
-  };
+  const c = centre(q);
   const steps = new Float32Array(N);
   return q.map((a, i) => {
     const b = q[(i + 1) % 4];
-    const len = dist(a, b) || 1;
-    let nx = -(b.y - a.y) / len;
-    let ny = (b.x - a.x) / len;
-    if (nx * ((a.x + b.x) / 2 - cx) + ny * ((a.y + b.y) / 2 - cy) < 0) {
-      nx = -nx;
-      ny = -ny;
-    }
+    const { nx, ny } = outwardNormal(a, b, c);
     let balance = 0;
     for (let k = 0; k < N; k++) {
       const t = 0.03 + (0.94 * k) / (N - 1);
-      const x = a.x + (b.x - a.x) * t;
-      const y = a.y + (b.y - a.y) * t;
-      steps[k] = 0;
-      let hit = false;
-      for (let dy = -1; dy <= 1 && !hit; dy++) {
-        for (let dx = -1; dx <= 1 && !hit; dx++) hit = at(edges, x + dx, y + dy) > 0;
-      }
-      if (!hit) continue;
-      // Inside minus outside, in whichever channel shows the larger step.
-      const gi = at(gray, x - 3 * nx, y - 3 * ny);
-      const go = at(gray, x + 3 * nx, y + 3 * ny);
-      const wi = at(white, x - 3 * nx, y - 3 * ny);
-      const wo = at(white, x + 3 * nx, y + 3 * ny);
-      if (gi < 0 || go < 0) continue;
-      const d = Math.abs(wi - wo) > Math.abs(gi - go) ? wi - wo : gi - go;
-      if (Math.abs(d) >= 8) {
-        steps[k] = d;
-        balance += Math.sign(d);
-      }
+      steps[k] = sideStep(frame, a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, nx, ny);
+      balance += Math.sign(steps[k]);
     }
     const sign = balance >= 0 ? 1 : -1;
     let hits = 0;
-    for (let k = 0; k < N; k++) if (steps[k] * sign >= 8) hits++;
+    for (let k = 0; k < N; k++) if (steps[k] * sign > 0) hits++;
     return hits / N;
   });
 }
 
+// True when the side a-b of a quad centred at c keeps going as an edge past
+// the corner b, with the polarity it has along the quad. Looks `reach` pixels
+// ahead, skipping a few at each end where edges crossing the line would count
+// as hits; too short a stretch to tell counts as not continuing.
+function continuesPast(frame, a, b, c, reach) {
+  const end = reach - 4;
+  if (end < 10) return false;
+  const len = dist(a, b) || 1;
+  const { nx, ny } = outwardNormal(a, b, c);
+  const dx = (b.x - a.x) / len;
+  const dy = (b.y - a.y) / len;
+  let balance = 0;
+  for (let k = 0; k < 16; k++) {
+    const t = 0.1 + (0.8 * k) / 15;
+    balance += Math.sign(sideStep(frame, a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, nx, ny));
+  }
+  const sign = balance >= 0 ? 1 : -1;
+  const N = 16;
+  let hits = 0;
+  for (let k = 0; k < N; k++) {
+    const s = 4 + ((end - 4) * k) / (N - 1);
+    if (sideStep(frame, b.x + dx * s, b.y + dy * s, nx, ny) * sign > 0) hits++;
+  }
+  return hits >= 0.4 * N;
+}
+
 // True when the page's own brightness continues past any side, i.e. that side
 // is not the page boundary (e.g. a text line on a page cut off by the frame).
+// Compares each point just outside with the paper just inside it, so uneven
+// lighting across the scene does not matter.
 export function paperBeyondSides(frame, q) {
   const { white, width, height } = frame;
-  const inside = [];
-  for (let i = 1; i < 12; i++) {
-    for (let j = 1; j < 12; j++) {
-      const p = quadPoint(q, i / 12, j / 12);
-      const x = Math.round(p.x);
-      const y = Math.round(p.y);
-      if (x >= 0 && y >= 0 && x < width && y < height) inside.push(white[y * width + x]);
-    }
-  }
-  inside.sort((a, b) => a - b);
-  const paper = inside[Math.floor(inside.length * 0.8)] - 12;
-  const cx = (q[0].x + q[1].x + q[2].x + q[3].x) / 4;
-  const cy = (q[0].y + q[1].y + q[2].y + q[3].y) / 4;
+  const c = centre(q);
   const N = 24;
   return q.some((a, i) => {
     const b = q[(i + 1) % 4];
-    const len = dist(a, b) || 1;
-    let nx = -(b.y - a.y) / len;
-    let ny = (b.x - a.x) / len;
-    if (nx * ((a.x + b.x) / 2 - cx) + ny * ((a.y + b.y) / 2 - cy) < 0) {
-      nx = -nx;
-      ny = -ny;
-    }
+    const { nx, ny } = outwardNormal(a, b, c);
     let count = 0;
     let valid = 0;
     for (let k = 0; k < N; k++) {
       const t = 0.1 + (0.8 * k) / (N - 1);
-      let best = -1;
-      for (let off = 4; off <= 16; off += 2) {
-        const x = Math.round(a.x + (b.x - a.x) * t + nx * off);
-        const y = Math.round(a.y + (b.y - a.y) * t + ny * off);
-        if (x >= 0 && y >= 0 && x < width && y < height) best = Math.max(best, white[y * width + x]);
+      const px = a.x + (b.x - a.x) * t;
+      const py = a.y + (b.y - a.y) * t;
+      // Brightest value 4-10 px out on each side: past the edge blur and
+      // text strokes, but short of whatever lies beyond a thin dark rim.
+      let inside = -1;
+      let outside = -1;
+      for (let off = 4; off <= 10; off += 2) {
+        for (const sgn of [-1, 1]) {
+          const x = Math.round(px + sgn * nx * off);
+          const y = Math.round(py + sgn * ny * off);
+          if (x < 0 || y < 0 || x >= width || y >= height) continue;
+          const v = white[y * width + x];
+          if (sgn < 0) inside = Math.max(inside, v);
+          else outside = Math.max(outside, v);
+        }
       }
-      if (best < 0) continue;
+      if (inside < 0 || outside < 0) continue;
       valid++;
-      if (best >= paper) count++;
+      if (outside >= inside - Math.max(8, 0.06 * inside)) count++;
     }
     return valid >= N / 2 && count >= 0.6 * valid;
   });
+}
+
+// True when `outer` is the page `inner` plus something it lies on (notebook,
+// clipboard, desk mat): inner sits inside outer, the band between them is
+// clearly darker than the page next to it, and inner's edges stop at its
+// corners. When inner is only the lit part of a page with a shadow across it,
+// the page edges carry on into the shadow, so outer is kept.
+export function isBacking(frame, outer, inner) {
+  const { white, width, height } = frame;
+  const area = polygonArea(inner) / polygonArea(outer);
+  if (area < 0.25) return false;
+  const q = alignQuad(outer, inner);
+  const m = 0.015 * Math.max(dist(outer[0], outer[2]), dist(outer[1], outer[3]));
+  const oc = centre(outer);
+  // Distance of p inside outer's side i (negative outside).
+  const depth = (i, p) => {
+    const { nx, ny } = outwardNormal(outer[i], outer[(i + 1) % 4], oc);
+    return (outer[i].x - p.x) * nx + (outer[i].y - p.y) * ny;
+  };
+  const open = [];
+  for (let i = 0; i < 4; i++) {
+    if (q.some((p) => depth(i, p) < -m)) return false;
+    if (depth(i, q[i]) > m || depth(i, q[(i + 1) % 4]) > m) open.push(i);
+  }
+  if (!open.length) return false;
+
+  const ic = centre(q);
+  for (const i of open) {
+    const a = q[i];
+    const b = q[(i + 1) % 4];
+    // How far each neighbouring side would run before reaching outer's side.
+    const side = lineThrough(outer[i], outer[(i + 1) % 4]);
+    const reach = (from, to) => {
+      const p = intersectLines(lineThrough(from, to), side);
+      return p ? dist(p, to) : 0;
+    };
+    const prev = q[(i + 3) % 4];
+    const next = q[(i + 2) % 4];
+    if (continuesPast(frame, prev, a, ic, reach(prev, a)) || continuesPast(frame, next, b, ic, reach(next, b))) return false;
+  }
+
+  const at = (x, y) => {
+    const xx = Math.round(x);
+    const yy = Math.round(y);
+    return xx >= 0 && yy >= 0 && xx < width && yy < height ? white[yy * width + xx] : -1;
+  };
+  const N = 16;
+  let dark = 0;
+  let total = 0;
+  for (const i of open) {
+    const a = q[i];
+    const b = q[(i + 1) % 4];
+    const oa = outer[i];
+    const ob = outer[(i + 1) % 4];
+    for (let k = 1; k < N; k++) {
+      const t = k / N;
+      const pa = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      const pb = { x: oa.x + (ob.x - oa.x) * t, y: oa.y + (ob.y - oa.y) * t };
+      if (dist(pa, pb) < m) continue;
+      // Page brightness just inside (max over a few depths skips text).
+      const len = Math.hypot(ic.x - pa.x, ic.y - pa.y) || 1;
+      let paper = -1;
+      for (let off = 3; off <= 9; off += 2) {
+        paper = Math.max(paper, at(pa.x + ((ic.x - pa.x) / len) * off, pa.y + ((ic.y - pa.y) / len) * off));
+      }
+      if (paper < 0) continue;
+      for (const f of [0.35, 0.65]) {
+        const v = at(pa.x + (pb.x - pa.x) * f, pa.y + (pb.y - pa.y) * f);
+        if (v < 0) continue;
+        total++;
+        if (v < 0.8 * paper) dark++;
+      }
+    }
+  }
+  return total >= 8 && dark >= 0.7 * total;
 }
 
 export function validateQuad(q, width, height, minAreaFrac = MIN_AREA_FRAC) {
@@ -257,13 +378,23 @@ export class Detector {
       const kernel3 = track(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3)));
       const kernel7 = track(cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(7, 7)));
 
-      // Strategy 1: Canny edges on luma and on whiteness. The union of both
-      // edge maps is kept to verify that candidate sides lie on real edges.
+      // Strategy 1: Canny edges on luma and on whiteness, plus a third edge
+      // map on lighting-normalized luma that finds page edges in shadows and
+      // dim corners, where absolute contrast is low. The union of all three
+      // is kept to verify that candidate sides lie on real edges. Contours are
+      // traced in the union and in the plain map, since the extra edges can
+      // also join the page outline to clutter around it.
       const edges = track(new cv.Mat());
-      const whiteEdges = track(new cv.Mat());
-      cv.Canny(grayBlur, edges, 40, 100, 3, true);
-      cv.Canny(whiteBlur, whiteEdges, 40, 100, 3, true);
-      cv.bitwise_or(edges, whiteEdges, edges);
+      const plain = track(new cv.Mat());
+      const scratch = track(new cv.Mat());
+      cv.Canny(grayBlur, plain, 40, 100, 3, true);
+      cv.Canny(whiteBlur, scratch, 40, 100, 3, true);
+      cv.bitwise_or(plain, scratch, plain);
+      const norm = track(new cv.Mat(height, width, cv.CV_8UC1));
+      norm.data.set(normalizeLighting(cv, grayBlur, track));
+      this.last.norm = new Uint8Array(norm.data);
+      cv.Canny(norm, scratch, 40, 100, 3, true);
+      cv.bitwise_or(plain, scratch, edges);
 
       // Strategy 2: straight line segments, combined into quads. Works even
       // when the page region touches other objects or is split by text.
@@ -272,9 +403,11 @@ export class Detector {
       cv.HoughLinesP(edges, segments, 1, Math.PI / 180, 30, 0.1 * minSide, 6);
 
       cv.dilate(edges, edges, kernel3, new cv.Point(-1, -1), 1);
+      cv.dilate(plain, plain, kernel3, new cv.Point(-1, -1), 1);
       edgeMap = new Uint8Array(edges.data);
       this.last.edges = edgeMap;
       this.#collect(edges, cv.RETR_LIST, minAreaFrac, candidates, track);
+      this.#collect(plain, cv.RETR_LIST, minAreaFrac, candidates, track);
       this.#linesToQuads(segments.data32S, minAreaFrac, candidates);
 
       // Strategy 3: Otsu segmentation of whiteness (bright page vs. darker scene).
@@ -288,7 +421,7 @@ export class Detector {
     }
 
     const frame = this.last;
-    let best = null;
+    const accepted = [];
     for (const c of candidates) {
       const q = c.quad;
       const reject = (reason) => debug && debug.push({ quad: q, reason });
@@ -321,7 +454,16 @@ export class Detector {
         centrality *
         (0.75 + 0.25 * brightness) *
         (0.6 + 0.4 * content);
-      if (!best || score > best.score) best = { quad: q, score };
+      accepted.push({ quad: q, score });
+    }
+    let best = null;
+    for (const c of accepted) {
+      if (best && c.score <= best.score) continue;
+      if (accepted.some((a) => a !== c && isBacking(frame, c.quad, a.quad))) {
+        if (debug) debug.push({ quad: c.quad, reason: 'backing under a page' });
+        continue;
+      }
+      best = c;
     }
     if (best) {
       const refined = refineQuad(this.last.gray, width, height, best.quad, 4);

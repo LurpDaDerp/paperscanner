@@ -70,10 +70,103 @@ function pageColor(u, v, landscape, textSeed) {
 
 const SKIN = [198, 146, 118];
 
-function background(kind, x, y, W, H) {
+// Multiplicative scene illumination (1 = nominal). Values above 1 clip, like
+// an over-exposed webcam.
+function lightField(kind, W, H, quad, rand) {
+  if (!kind) return null;
+  const pc = quad
+    ? { x: quad.reduce((s, p) => s + p.x, 0) / 4, y: quad.reduce((s, p) => s + p.y, 0) / 4 }
+    : { x: W / 2, y: H / 2 };
+  const a = rand() * 2 * Math.PI;
+  const nx = Math.cos(a);
+  const ny = Math.sin(a);
+  switch (kind) {
+    case 'gradient': {
+      // Light falls off steadily across the frame (window or lamp to one side).
+      const lo = 0.3 + 0.15 * rand();
+      const ext = Math.abs(nx) * W + Math.abs(ny) * H;
+      return (x, y) => 1.15 - (1.15 - lo) * (((x - W / 2) * nx + (y - H / 2) * ny) / ext + 0.5);
+    }
+    case 'spot': {
+      // A desk lamp: a bright pool that fades into dim corners.
+      const cx = pc.x + (rand() - 0.5) * 0.6 * W;
+      const cy = pc.y + (rand() - 0.5) * 0.6 * H;
+      const r2 = (0.45 * Math.hypot(W, H)) ** 2;
+      return (x, y) => 0.25 + 1.0 * Math.exp(-((x - cx) ** 2 + (y - cy) ** 2) / r2);
+    }
+    case 'shadow': {
+      // A soft-edged shadow (arm, phone, head) cutting across the page.
+      const px = pc.x + (rand() - 0.5) * 0.2 * W;
+      const py = pc.y + (rand() - 0.5) * 0.2 * H;
+      const soft = 4 + 30 * rand();
+      const dark = 0.38 + 0.15 * rand();
+      return (x, y) => dark + (1 - dark) * Math.min(1, Math.max(0, 0.5 + ((x - px) * nx + (y - py) * ny) / soft));
+    }
+    case 'blob': {
+      // A rounded shadow over one corner of the page.
+      const c = quad ? quad[Math.floor(rand() * 4)] : pc;
+      const r = 0.18 * Math.min(W, H) + 0.12 * Math.min(W, H) * rand();
+      const soft = 6 + 20 * rand();
+      return (x, y) => {
+        const t = Math.min(1, Math.max(0, 0.5 + (Math.hypot(x - c.x, y - c.y) - r) / soft));
+        return 0.4 + 0.6 * t;
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+// Objects around a page lying on a desk: a notebook under the page (bigger
+// than it, offset to one side) and a pen next to one edge.
+function deskProps(quad, rand) {
+  if (!quad) return null;
+  const c = { x: quad.reduce((s, p) => s + p.x, 0) / 4, y: quad.reduce((s, p) => s + p.y, 0) / 4 };
+  const grow = 1.12 + 0.12 * rand();
+  const shift = { x: (rand() - 0.5) * 0.1 * dist2(quad[0], quad[1]), y: (rand() - 0.5) * 0.1 * dist2(quad[0], quad[3]) };
+  const book = quad.map((p) => ({ x: c.x + (p.x - c.x) * grow + shift.x, y: c.y + (p.y - c.y) * grow + shift.y }));
+  const side = Math.floor(rand() * 4);
+  const a = quad[side];
+  const b = quad[(side + 1) % 4];
+  const len = dist2(a, b);
+  let nx = -(b.y - a.y) / len;
+  let ny = (b.x - a.x) / len;
+  if (nx * ((a.x + b.x) / 2 - c.x) + ny * ((a.y + b.y) / 2 - c.y) < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  const off = 14 + 30 * rand();
+  const pen = { a: { x: a.x + nx * off, y: a.y + ny * off }, b: { x: b.x + nx * off, y: b.y + ny * off } };
+  return { book: invert3(squareToQuad(book)), pen };
+}
+
+const dist2 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+function insideQuad(inv, X, Y) {
+  const w = inv[6] * X + inv[7] * Y + inv[8];
+  const u = (inv[0] * X + inv[1] * Y + inv[2]) / w;
+  const v = (inv[3] * X + inv[4] * Y + inv[5]) / w;
+  return u >= 0 && u <= 1 && v >= 0 && v <= 1;
+}
+
+function nearSegment({ a, b }, X, Y, r) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const t = Math.max(0.15, Math.min(0.85, ((X - a.x) * dx + (Y - a.y) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(X - a.x - t * dx, Y - a.y - t * dy) < r;
+}
+
+function background(kind, x, y, W, H, props) {
   const u = x / W;
   const v = y / H;
   switch (kind) {
+    case 'desk':
+    case 'whitedesk': {
+      if (props && nearSegment(props.pen, x, y, 3)) return [25, 30, 60];
+      if (props && insideQuad(props.book, x, y)) return kind === 'desk' ? [58, 72, 110] : [150, 60, 55];
+      const grain = 6 * Math.sin(y * 0.09 + 3 * Math.sin(x * 0.01));
+      return kind === 'desk' ? [168 + grain, 132 + grain, 96 + grain] : [206 + grain / 2, 204 + grain / 2, 198 + grain / 2];
+    }
     case 'light':
       return [212 - 25 * v, 208 - 25 * v, 200 - 25 * v];
     case 'room':
@@ -110,10 +203,13 @@ export function renderScene({
   cornerThumb = false,
   landscape = false,
   textSeed = 0,
+  light = null,
 }) {
   const rand = rng(seed);
   const data = new Uint8ClampedArray(W * H * 4);
   const inv = quad ? invert3(squareToQuad(quad)) : null;
+  const lit = lightField(light, W, H, quad, rand);
+  const props = bg === 'desk' || bg === 'whitedesk' ? deskProps(quad, rand) : null;
   // Hands: a palm behind each side edge, a thumb in front of it.
   const handsList = [];
   if (quad && hands) {
@@ -156,7 +252,7 @@ export function renderScene({
                 onPage = true;
               }
             }
-            if (!onPage) c = inHand(X, Y, false) ? SKIN : background(bg, X, Y, W, H);
+            if (!onPage) c = inHand(X, Y, false) ? SKIN : background(bg, X, Y, W, H, props);
           }
           r += c[0];
           g += c[1];
@@ -165,9 +261,10 @@ export function renderScene({
       }
       const i = (y * W + x) * 4;
       const n = () => (rand() - 0.5) * 2 * noise;
-      data[i] = (gain * r) / 4 + n();
-      data[i + 1] = (gain * g) / 4 + n();
-      data[i + 2] = (gain * b) / 4 + n();
+      const k = lit ? gain * lit(x + 0.5, y + 0.5) : gain;
+      data[i] = (k * r) / 4 + n();
+      data[i + 1] = (k * g) / 4 + n();
+      data[i + 2] = (k * b) / 4 + n();
       data[i + 3] = 255;
     }
   }

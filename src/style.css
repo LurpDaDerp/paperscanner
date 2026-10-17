@@ -361,6 +361,11 @@ main {
   opacity: 0;
 }
 
+.stage-close,
+.stage-switch {
+  z-index: 2;
+}
+
 .stage-close {
   position: absolute;
   top: 12px;

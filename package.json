@@ -1,0 +1,23 @@
+{
+  "name": "paperscanner",
+  "version": "1.0.0",
+  "description": "Minimal webcam document scanner that exports PDFs",
+  "scripts": {
+    "predev": "node scripts/copy-opencv.mjs",
+    "dev": "vite",
+    "prebuild": "node scripts/copy-opencv.mjs",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node tests/detector.test.mjs"
+  },
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "vite": "^6.4.4"
+  },
+  "dependencies": {
+    "@techstark/opencv-js": "4.10.0-release.1",
+    "jspdf": "^4.2.1"
+  },
+  "private": true
+}

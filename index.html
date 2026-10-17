@@ -33,11 +33,47 @@
       <!-- Home -->
       <section class="view" id="view-home" data-active>
         <div class="home">
+          <ol class="how" aria-label="How it works">
+            <li class="how-step">
+              <svg class="how-art" viewBox="0 0 112 88" aria-hidden="true">
+                <path class="how-frame" d="M10 24v-8a6 6 0 0 1 6-6h8M88 10h8a6 6 0 0 1 6 6v8M102 64v8a6 6 0 0 1-6 6h-8M24 78h-8a6 6 0 0 1-6-6v-8" />
+                <g class="how-tilt">
+                  <path class="how-paper" d="M38 21h28l8 8v38H38z" />
+                  <path d="M66 21v8h8" />
+                  <path class="how-ink" d="M44 36h16M44 42h24M44 48h24M44 54h14" />
+                </g>
+              </svg>
+              <span>Show a page</span>
+            </li>
+            <li class="how-step">
+              <svg class="how-art" viewBox="0 0 112 88" aria-hidden="true">
+                <path class="how-frame" d="M10 24v-8a6 6 0 0 1 6-6h8M88 10h8a6 6 0 0 1 6 6v8M102 64v8a6 6 0 0 1-6 6h-8M24 78h-8a6 6 0 0 1-6-6v-8" />
+                <rect class="how-flash" x="12" y="12" width="88" height="64" rx="4" />
+                <path class="how-paper how-detected" d="M38 21h36v46H38z" />
+                <path class="how-ink" d="M44 36h16M44 42h24M44 48h24M44 54h14" />
+                <path class="how-corners" d="M38 28v-7h7M67 21h7v7M74 60v7h-7M45 67h-7v-7" />
+              </svg>
+              <span>Hold it still</span>
+            </li>
+            <li class="how-step">
+              <svg class="how-art" viewBox="0 0 112 88" aria-hidden="true">
+                <path class="how-paper how-back" d="M48 13h24l8 8v36H48z" />
+                <g class="how-drop">
+                  <path class="how-paper" d="M36 23h28l8 8v38H36z" />
+                  <path d="M64 23v8h8" />
+                  <path class="how-ink" d="M42 38h16M42 44h24M42 50h24M42 56h14" />
+                </g>
+                <circle class="how-paper" cx="76" cy="68" r="10" />
+                <path class="how-arrow" d="M76 63v9M72 68.5l4 4 4-4" />
+              </svg>
+              <span>Save as PDF</span>
+            </li>
+          </ol>
           <button class="btn btn-primary btn-lg" id="start">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2" /><path d="M8 12h8" /></svg>
             Start scanning
           </button>
-          <p class="home-note">Hold a page up to your webcam. Scans never leave your device.</p>
+          <p class="home-note">Hold a page up to your webcam.</p>
         </div>
       </section>
 

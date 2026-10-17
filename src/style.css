@@ -270,7 +270,7 @@ main {
   align-items: center;
   justify-content: center;
   gap: 18px;
-  padding: 24px;
+  padding: 24px 16px;
   text-align: center;
 }
 
@@ -278,6 +278,237 @@ main {
   color: var(--muted);
   font-size: 14px;
   max-width: 34ch;
+}
+
+/* How it works: three line drawings of the scan, lit one after another. */
+
+.how {
+  --art: clamp(84px, 24vw, 132px);
+  --gap: clamp(18px, 5vw, 44px);
+  --cycle: 7.5s;
+  display: flex;
+  gap: var(--gap);
+  margin: 0 0 30px;
+  padding: 0;
+  list-style: none;
+}
+
+.how-step {
+  position: relative;
+  width: var(--art);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  animation: how-focus var(--cycle) var(--ease) infinite;
+}
+
+/* Negative delays start every step mid-cycle, so none waits in its static
+   (reduced-motion) pose before its turn comes round. */
+.how-step:nth-child(2) {
+  animation-delay: calc(var(--cycle) * -2 / 3);
+}
+
+.how-step:nth-child(3) {
+  animation-delay: calc(var(--cycle) / -3);
+}
+
+/* Chevron between steps, centred on the drawings. */
+.how-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: calc(var(--art) * 44 / 112 - 3px);
+  right: calc(var(--gap) / -2 - 3px);
+  width: 6px;
+  height: 6px;
+  border-top: 1.5px solid var(--faint);
+  border-right: 1.5px solid var(--faint);
+  transform: rotate(45deg);
+}
+
+.how-art {
+  width: var(--art);
+  height: auto;
+  aspect-ratio: 112 / 88;
+  stroke-width: 1.5;
+  overflow: visible;
+}
+
+.how-frame {
+  stroke: var(--faint);
+}
+
+.how-paper {
+  fill: var(--bg);
+}
+
+.how-back {
+  stroke: var(--faint);
+}
+
+.how-ink {
+  stroke-opacity: 0.45;
+}
+
+.how-tilt,
+.how-drop,
+.how-corners,
+.how-arrow {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: var(--cycle) var(--ease) infinite;
+  animation-delay: inherit;
+}
+
+.how-tilt {
+  transform: translate(-3px, 2px) rotate(-7deg);
+  animation-name: how-tilt;
+}
+
+.how-detected {
+  fill: #fff;
+  fill-opacity: 0.12;
+  animation: how-fill var(--cycle) var(--ease) infinite;
+  animation-delay: inherit;
+}
+
+.how-corners {
+  stroke-width: 3;
+  animation-name: how-lock;
+}
+
+.how-flash {
+  fill: #fff;
+  stroke: none;
+  opacity: 0;
+  animation: how-flash var(--cycle) linear infinite;
+  animation-delay: inherit;
+}
+
+.how-drop {
+  animation-name: how-drop;
+}
+
+.how-arrow {
+  animation-name: how-nudge;
+}
+
+/* The drawings sit inside each step, so `inherit` picks up the step's delay. */
+.how-art,
+.how-art g {
+  animation-delay: inherit;
+}
+
+@keyframes how-focus {
+  0%,
+  100% {
+    color: var(--muted);
+  }
+  5%,
+  30% {
+    color: var(--text);
+  }
+  38% {
+    color: var(--muted);
+  }
+}
+
+@keyframes how-tilt {
+  0%,
+  100% {
+    transform: translate(-12px, 7px) rotate(-17deg);
+  }
+  20%,
+  34% {
+    transform: translate(-3px, 2px) rotate(-7deg);
+  }
+}
+
+@keyframes how-lock {
+  0%,
+  6% {
+    opacity: 0;
+    transform: scale(1.2);
+  }
+  13%,
+  32% {
+    opacity: 1;
+    transform: none;
+  }
+  40%,
+  100% {
+    opacity: 0;
+    transform: none;
+  }
+}
+
+@keyframes how-fill {
+  0%,
+  12%,
+  40%,
+  100% {
+    fill-opacity: 0;
+  }
+  27% {
+    fill-opacity: 0.2;
+  }
+}
+
+@keyframes how-flash {
+  0%,
+  27% {
+    opacity: 0;
+  }
+  28.5% {
+    opacity: 0.5;
+  }
+  36%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes how-drop {
+  0%,
+  3% {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  16%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes how-nudge {
+  0%,
+  15%,
+  29%,
+  100% {
+    transform: none;
+  }
+  22% {
+    transform: translateY(3px);
+  }
+}
+
+.view:not([data-active]) .how * {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .how-step,
+  .how-step * {
+    animation: none !important;
+  }
+
+  .how-step {
+    color: var(--text);
+  }
 }
 
 /* Scanner */

@@ -14,6 +14,7 @@ export function buildCases(W, H) {
   for (let i = 0; i < 6; i++) cases.push({ bg: bgs[i % 3], gain: 0.55, noise: 8, quad: randomQuad(rand, W, H) });
   for (let i = 0; i < 6; i++) cases.push({ bg: bgs[i % 3], blur: 2.2, quad: randomQuad(rand, W, H) });
   for (let i = 0; i < 6; i++) cases.push({ bg: bgs[i % 3], cornerThumb: true, quad: randomQuad(rand, W, H) });
+  for (let i = 0; i < 9; i++) cases.push({ bg: bgs[i % 3], quad: randomQuad(rand, W, H, { size: [0.3, 0.5] }) });
   return cases;
 }
 

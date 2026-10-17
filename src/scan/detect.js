@@ -14,7 +14,7 @@ import {
   robustFitLine,
 } from './geometry.js';
 
-const MIN_AREA_FRAC = 0.06;
+export const MIN_AREA_FRAC = 0.03;
 const MAX_AREA_FRAC = 0.97;
 const MIN_SIDE_SUPPORT = 0.7;
 const MIN_MEAN_SUPPORT = 0.82;
@@ -62,7 +62,7 @@ function meanInside(channel, width, height, q) {
 // Fraction of each side backed by a real page edge: an edge pixel nearby and
 // a brightness step across the side with the same polarity as the rest of
 // that side. Text lines crossed by a fake side fail the polarity test.
-function edgeSupport(frame, q, N = 48) {
+export function edgeSupport(frame, q, N = 48) {
   const { edges, gray, white, width, height } = frame;
   const cx = (q[0].x + q[1].x + q[2].x + q[3].x) / 4;
   const cy = (q[0].y + q[1].y + q[2].y + q[3].y) / 4;
@@ -113,7 +113,7 @@ function edgeSupport(frame, q, N = 48) {
 
 // True when the page's own brightness continues past any side, i.e. that side
 // is not the page boundary (e.g. a text line on a page cut off by the frame).
-function paperBeyondSides(frame, q) {
+export function paperBeyondSides(frame, q) {
   const { white, width, height } = frame;
   const inside = [];
   for (let i = 1; i < 12; i++) {
@@ -308,13 +308,19 @@ export class Detector {
         continue;
       }
       if (debug) debug.push({ quad: q, reason: `ok ${support.map((v) => v.toFixed(2))}` });
-      // Prefer large, well-supported, bright quads near the centre of view.
+      // Prefer large, well-supported, bright quads with content (text, marks)
+      // near the centre of view: that is where people hold a page.
       const brightness = meanInside(white, width, height, q) / 255;
+      const content = Math.min(1, meanInside(edgeMap, width, height, q) / 255 / 0.1);
       const cx = (q[0].x + q[1].x + q[2].x + q[3].x) / 4 - width / 2;
       const cy = (q[0].y + q[1].y + q[2].y + q[3].y) / 4 - height / 2;
-      const centrality = 1 - Math.hypot(cx, cy) / Math.hypot(width, height);
+      const centrality = (1 - Math.hypot(cx, cy) / Math.hypot(width, height)) ** 2;
       const score =
-        (quadArea / (width * height)) * meanSupport * centrality * (0.75 + 0.25 * brightness);
+        (quadArea / (width * height)) *
+        meanSupport *
+        centrality *
+        (0.75 + 0.25 * brightness) *
+        (0.6 + 0.4 * content);
       if (!best || score > best.score) best = { quad: q, score };
     }
     if (best) {
@@ -353,7 +359,6 @@ export class Detector {
     for (let i = 0; i < seg.length; i += 4) {
       const a = { x: seg[i], y: seg[i + 1] };
       const b = { x: seg[i + 2], y: seg[i + 3] };
-      const len = dist(a, b);
       let theta = Math.atan2(b.y - a.y, b.x - a.x) + Math.PI / 2;
       theta = ((theta % Math.PI) + Math.PI) % Math.PI;
       const rho = ((a.x + b.x) / 2) * Math.cos(theta) + ((a.y + b.y) / 2) * Math.sin(theta);
@@ -363,15 +368,18 @@ export class Detector {
         const r = ((a.x + b.x) / 2) * Math.cos(g.theta) + ((a.y + b.y) / 2) * Math.sin(g.theta);
         return dt < 0.05 && Math.abs(r - g.rho) < 4;
       });
-      if (g) {
-        g.pts.push(a, b);
-        g.len += len;
-      } else {
-        groups.push({ theta, rho, pts: [a, b], len });
-      }
+      if (g) g.pts.push(a, b);
+      else groups.push({ theta, rho, pts: [a, b] });
     }
-    groups.sort((g, h) => h.len - g.len);
-    const lines = groups.slice(0, 24).map((g) => fitLine(g.pts));
+    // Rank by the extent each line covers (HoughLinesP returns many
+    // overlapping segments, so summed segment length would favour text rows).
+    for (const g of groups) {
+      g.line = fitLine(g.pts);
+      const proj = g.pts.map((p) => (p.x - g.line.px) * g.line.dx + (p.y - g.line.py) * g.line.dy);
+      g.extent = Math.max(...proj) - Math.min(...proj);
+    }
+    groups.sort((g, h) => h.extent - g.extent);
+    const lines = groups.slice(0, 30).map((g) => g.line);
     const dir = lines.map((l) => Math.atan2(l.dy, l.dx));
     const angleBetween = (i, j) => {
       let d = Math.abs(dir[i] - dir[j]) % Math.PI;
@@ -478,16 +486,23 @@ export class Detector {
   // frame. Used to tell whether the page in view has changed.
   signature(quad) {
     const { gray, width, height } = this.last;
-    const W = 24;
-    const H = 32;
+    const W = 12;
+    const H = 16;
+    const S = 6; // subsamples per cell side, averaged (low-pass)
     const sig = new Float32Array(W * H);
     let mean = 0;
     for (let j = 0; j < H; j++) {
       for (let i = 0; i < W; i++) {
-        const p = quadPoint(quad, (i + 0.5) / W, (j + 0.5) / H);
-        const x = Math.min(width - 1, Math.max(0, Math.round(p.x)));
-        const y = Math.min(height - 1, Math.max(0, Math.round(p.y)));
-        const v = gray[y * width + x];
+        let sum = 0;
+        for (let sj = 0; sj < S; sj++) {
+          for (let si = 0; si < S; si++) {
+            const p = quadPoint(quad, (i + (si + 0.5) / S) / W, (j + (sj + 0.5) / S) / H);
+            const x = Math.min(width - 1, Math.max(0, Math.round(p.x)));
+            const y = Math.min(height - 1, Math.max(0, Math.round(p.y)));
+            sum += gray[y * width + x];
+          }
+        }
+        const v = sum / (S * S);
         sig[j * W + i] = v;
         mean += v;
       }
@@ -500,6 +515,9 @@ export class Detector {
     return sig;
   }
 }
+
+// Signature distance above which the page in view counts as a new page.
+export const PAGE_CHANGE_DISTANCE = 0.25;
 
 export function signatureDistance(a, b) {
   let s = 0;

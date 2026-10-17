@@ -48,7 +48,7 @@ const hash = (a, b) => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 
-function pageColor(u, v, landscape) {
+function pageColor(u, v, landscape, textSeed) {
   const shade = 1 - 0.06 * v + 0.03 * u;
   let c = [244 * shade, 242 * shade, 236 * shade];
   const lineH = landscape ? 0.045 : 0.03;
@@ -58,7 +58,8 @@ function pageColor(u, v, landscape) {
     if (inRow > 0.25 && inRow < 0.65) {
       const word = Math.floor(u * 22);
       const inWord = (u * 22) % 1;
-      if (hash(row, word) > 0.12 && inWord < 0.8 && !(hash(row, 99) < 0.2 && u > 0.6)) {
+      const r = row + 1000 * textSeed;
+      if (hash(r, word) > 0.12 && inWord < 0.8 && !(hash(r, 99) < 0.2 && u > 0.6)) {
         c = [45, 45, 50];
       }
     }
@@ -108,6 +109,7 @@ export function renderScene({
   gain = 1,
   cornerThumb = false,
   landscape = false,
+  textSeed = 0,
 }) {
   const rand = rng(seed);
   const data = new Uint8ClampedArray(W * H * 4);
@@ -150,7 +152,7 @@ export function renderScene({
               const u = (inv[0] * X + inv[1] * Y + inv[2]) / w;
               const v = (inv[3] * X + inv[4] * Y + inv[5]) / w;
               if (u >= 0 && u <= 1 && v >= 0 && v <= 1) {
-                c = pageColor(u, v, landscape);
+                c = pageColor(u, v, landscape, textSeed);
                 onPage = true;
               }
             }
@@ -173,10 +175,10 @@ export function renderScene({
 }
 
 // Random page quad: aspect, size, rotation and perspective tilt.
-export function randomQuad(rand, W, H, { landscape = false, maxRot = 25 } = {}) {
+export function randomQuad(rand, W, H, { landscape = false, maxRot = 25, size = [0.5, 0.9] } = {}) {
   for (;;) {
     const aspect = rand() < 0.5 ? 1.294 : 1.414;
-    const ph = H * (0.5 + 0.4 * rand());
+    const ph = H * (size[0] + (size[1] - size[0]) * rand());
     const pH = landscape ? ph * 0.8 : ph;
     const pw = landscape ? pH * aspect : ph / aspect;
     const cx = W / 2 + (rand() - 0.5) * 0.3 * W;

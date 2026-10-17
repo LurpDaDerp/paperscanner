@@ -188,33 +188,36 @@ export function validateQuad(q, width, height, minAreaFrac = MIN_AREA_FRAC) {
 }
 
 // Snaps each side of a rough quad to the contour points along it, then
-// intersects the fitted lines. Recovers corners hidden by fingers.
-function fitSidesToContour(q, pts) {
-  const lines = [];
-  for (let i = 0; i < 4; i++) {
-    const a = q[i];
-    const b = q[(i + 1) % 4];
-    const len = dist(a, b);
-    const line = lineThrough(a, b);
-    const tol = Math.max(2, 0.02 * len);
-    const near = [];
-    for (const p of pts) {
-      const t = ((p.x - a.x) * line.dx + (p.y - a.y) * line.dy) / len;
-      if (t < 0.05 || t > 0.95) continue;
-      if (Math.abs((p.x - a.x) * line.dy - (p.y - a.y) * line.dx) <= tol) near.push(p);
+// intersects the fitted lines. Recovers corners hidden by fingers. Iterates
+// with a shrinking tolerance so a badly truncated corner converges.
+function fitSidesToContour(rough, pts) {
+  let q = rough;
+  for (const tolFrac of [0.05, 0.025, 0.015]) {
+    const lines = [];
+    for (let i = 0; i < 4; i++) {
+      const a = q[i];
+      const b = q[(i + 1) % 4];
+      const len = dist(a, b);
+      const line = lineThrough(a, b);
+      const tol = Math.max(2, tolFrac * len);
+      const near = [];
+      for (const p of pts) {
+        const t = ((p.x - a.x) * line.dx + (p.y - a.y) * line.dy) / len;
+        if (t < 0.05 || t > 0.95) continue;
+        if (Math.abs((p.x - a.x) * line.dy - (p.y - a.y) * line.dx) <= tol) near.push(p);
+      }
+      const fitted = near.length >= 8 ? robustFitLine(near, null, Math.max(6, near.length * 0.3)) : null;
+      lines.push(fitted || line);
     }
-    const fitted = near.length >= 8 ? robustFitLine(near, null, Math.max(6, near.length * 0.3)) : null;
-    lines.push(fitted || line);
-  }
-  const out = [];
-  for (let i = 0; i < 4; i++) {
-    const p = intersectLines(lines[(i + 3) % 4], lines[i]);
-    if (!p || dist(p, q[i]) > 0.15 * dist(q[0], q[2])) {
-      return q;
+    const next = [];
+    for (let i = 0; i < 4; i++) {
+      const p = intersectLines(lines[(i + 3) % 4], lines[i]);
+      if (!p || dist(p, rough[i]) > 0.15 * dist(rough[0], rough[2])) return q;
+      next.push(p);
     }
-    out.push(p);
+    q = next;
   }
-  return out;
+  return q;
 }
 
 function matToPoints(mat) {

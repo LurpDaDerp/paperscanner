@@ -21,7 +21,8 @@ function run(scene) {
   const img = renderScene({ W, H, ...scene });
   const mat = cv.matFromImageData(img);
   const blurred = new cv.Mat();
-  cv.GaussianBlur(mat, blurred, new cv.Size(0, 0), 1.1, 1.1, cv.BORDER_DEFAULT);
+  const sigma = scene.blur ?? 1.1;
+  cv.GaussianBlur(mat, blurred, new cv.Size(0, 0), sigma, sigma, cv.BORDER_DEFAULT);
   try {
     return locatePage(cv, detector, blurred);
   } finally {
@@ -41,16 +42,17 @@ cases.forEach((scene, i) => {
   const t0 = Date.now();
   const found = run({ ...scene, seed: i + 1 });
   if (process.env.VERBOSE) console.log(`  case ${i} ${Date.now() - t0}ms`);
+  const label = [scene.bg, scene.landscape && 'landscape', scene.W && `${scene.W}x${scene.H}`, scene.gain && 'dim', scene.blur && 'blurry', scene.cornerThumb && 'corner thumb'].filter(Boolean).join(', ');
   if (!found) {
     missed++;
-    console.log(`  case ${i} (${scene.bg}${scene.landscape ? ', landscape' : ''}): NOT DETECTED`);
+    console.log(`  case ${i} (${label}): NOT DETECTED`);
     return;
   }
   const q = alignQuad(truth, found);
   const errs = q.map((p, k) => dist(p, truth[k]));
   errors.push(...errs);
   const max = Math.max(...errs);
-  if (max > 4) console.log(`  case ${i} (${scene.bg}): max corner error ${max.toFixed(2)}px`);
+  if (max > 2) console.log(`  case ${i} (${label}): max corner error ${max.toFixed(2)}px`);
 });
 
 errors.sort((a, b) => a - b);
@@ -58,9 +60,9 @@ const mean = errors.reduce((s, e) => s + e, 0) / errors.length;
 const p95 = errors[Math.floor(errors.length * 0.95)];
 const max = errors[errors.length - 1];
 console.log(`Positive scenes: ${cases.length}, detected ${cases.length - missed}`);
-console.log(`Corner error (px @ ${W}x${H}): mean ${mean.toFixed(2)}, p95 ${p95.toFixed(2)}, max ${max.toFixed(2)}`);
+console.log(`Corner error (px): mean ${mean.toFixed(2)}, p95 ${p95.toFixed(2)}, max ${max.toFixed(2)}`);
 if (missed > 0) failures++;
-if (mean > 1.5 || p95 > 3 || max > 6) failures++;
+if (mean > 0.5 || p95 > 1.5 || max > 3) failures++;
 
 const negatives = buildNegatives();
 negatives.forEach((scene, i) => {

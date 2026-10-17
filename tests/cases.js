@@ -9,6 +9,11 @@ export function buildCases(W, H) {
   for (let i = 0; i < 9; i++) cases.push({ bg: bgs[i % 3], landscape: true, quad: randomQuad(rand, W, H, { landscape: true }) });
   for (let i = 0; i < 6; i++) cases.push({ bg: bgs[i % 3], quad: randomQuad(rand, W, H, { maxRot: 50 }) });
   for (let i = 0; i < 6; i++) cases.push({ bg: bgs[i % 3], hands: false, noise: 6, quad: randomQuad(rand, W, H) });
+  // Harder conditions.
+  for (let i = 0; i < 6; i++) cases.push({ bg: bgs[i % 3], W: 640, H: 480, quad: randomQuad(rand, 640, 480) });
+  for (let i = 0; i < 6; i++) cases.push({ bg: bgs[i % 3], gain: 0.55, noise: 8, quad: randomQuad(rand, W, H) });
+  for (let i = 0; i < 6; i++) cases.push({ bg: bgs[i % 3], blur: 2.2, quad: randomQuad(rand, W, H) });
+  for (let i = 0; i < 6; i++) cases.push({ bg: bgs[i % 3], cornerThumb: true, quad: randomQuad(rand, W, H) });
   return cases;
 }
 

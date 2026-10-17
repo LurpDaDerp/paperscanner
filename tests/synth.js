@@ -97,7 +97,18 @@ function background(kind, x, y, W, H) {
   }
 }
 
-export function renderScene({ W = 1280, H = 720, quad, bg = 'dark', hands = true, seed = 1, noise = 3, landscape = false }) {
+export function renderScene({
+  W = 1280,
+  H = 720,
+  quad,
+  bg = 'dark',
+  hands = true,
+  seed = 1,
+  noise = 3,
+  gain = 1,
+  cornerThumb = false,
+  landscape = false,
+}) {
   const rand = rng(seed);
   const data = new Uint8ClampedArray(W * H * 4);
   const inv = quad ? invert3(squareToQuad(quad)) : null;
@@ -112,6 +123,10 @@ export function renderScene({ W = 1280, H = 720, quad, bg = 'dark', hands = true
       handsList.push({ cx: mx + out * 0.045 * W, cy: my, rx: 0.06 * W, ry: 0.1 * H, front: false });
       handsList.push({ cx: mx - out * 0.004 * W, cy: my - 0.02 * H, rx: 0.014 * W, ry: 0.035 * H, front: true });
     }
+  }
+  if (quad && cornerThumb) {
+    const c = quad[Math.floor(rand() * 4)];
+    handsList.push({ cx: c.x, cy: c.y, rx: 0.025 * W, ry: 0.04 * H, front: true });
   }
   const inHand = (x, y, front) =>
     handsList.some((h) => h.front === front && ((x - h.cx) / h.rx) ** 2 + ((y - h.cy) / h.ry) ** 2 < 1);
@@ -148,9 +163,9 @@ export function renderScene({ W = 1280, H = 720, quad, bg = 'dark', hands = true
       }
       const i = (y * W + x) * 4;
       const n = () => (rand() - 0.5) * 2 * noise;
-      data[i] = r / 4 + n();
-      data[i + 1] = g / 4 + n();
-      data[i + 2] = b / 4 + n();
+      data[i] = (gain * r) / 4 + n();
+      data[i + 1] = (gain * g) / 4 + n();
+      data[i + 2] = (gain * b) / 4 + n();
       data[i + 3] = 255;
     }
   }

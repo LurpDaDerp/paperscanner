@@ -19,7 +19,7 @@ const scene = neg ? { ...buildNegatives()[index], hands: false, seed: 1000 + ind
 const img = renderScene({ W, H, ...scene });
 const mat = cv.matFromImageData(img);
 const blurred = new cv.Mat();
-cv.GaussianBlur(mat, blurred, new cv.Size(0, 0), 1.1, 1.1, cv.BORDER_DEFAULT);
+cv.GaussianBlur(mat, blurred, new cv.Size(0, 0), scene.blur ?? 1.1, scene.blur ?? 1.1, cv.BORDER_DEFAULT);
 const found = locatePage(cv, new Detector(cv), blurred);
 const fmt = (q) => q && q.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join('  ');
 console.log('truth', fmt(scene.quad));
@@ -31,4 +31,4 @@ const draw = (q, color) =>
   });
 if (scene.quad) draw(scene.quad, [0, 255, 0, 255]);
 if (found) draw(found, [255, 0, 0, 255]);
-writeFileSync(`${outDir}/case-${id}.png`, encodePNG({ data: mat.data, width: W, height: H }));
+writeFileSync(`${outDir}/case-${id}.png`, encodePNG({ data: mat.data, width: img.width, height: img.height }));

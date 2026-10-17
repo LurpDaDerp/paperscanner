@@ -8,7 +8,7 @@
     "prebuild": "node scripts/copy-opencv.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node tests/detector.test.mjs && node tests/aspect.test.mjs && node tests/signature.test.mjs"
+    "test": "node tests/detector.test.mjs && node tests/aspect.test.mjs && node tests/signature.test.mjs && node tests/tracker.test.mjs"
   },
   "license": "ISC",
   "type": "module",

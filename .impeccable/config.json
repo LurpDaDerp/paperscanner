@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "geist",
+        "createdAt": "2026-10-17T21:46:08.006Z",
+        "reason": "Claude decided: user asked for a minimal, modern black/white utility UI; a neutral grotesque fits that brief better than a characterful face"
+      }
+    ]
+  }
+}

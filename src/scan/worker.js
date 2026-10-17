@@ -46,9 +46,6 @@ const handlers = {
     return found ? { quad: found.quad, signature: detector.signature(found.quad) } : { quad: null };
   },
 
-  // Finds the page on a full-resolution frame (no warping).
-  locate: ({ image, hint }) => ({ quad: withMat(image, (mat) => locatePage(cv, detector, mat, hint)) }),
-
   // Produces the final page image. With `detect`, the page is located first
   // (using `quad` as a hint); otherwise `quad` is used exactly as given.
   process: ({ image, quad, detect }) =>

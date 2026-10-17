@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="Scan paper documents with your webcam and download them as a PDF." />
+    <title>Paper Scanner</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000'/%3E%3Cpath d='M10 6h9l5 5v15H10z' fill='none' stroke='%23fff' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Paper Scanner home">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M7 3h7l5 5v13H7z" />
+          <path d="M14 3v5h5" />
+          <path d="M3 8V5a2 2 0 0 1 2-2M3 16v3a2 2 0 0 0 2 2" class="bracket" />
+        </svg>
+        <span>Paper Scanner</span>
+      </a>
+      <!-- Link to this project's repository. -->
+      <a class="icon-btn" href="https://github.com/" target="_blank" rel="noopener noreferrer" aria-label="View source on GitHub" title="View source on GitHub">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+        </svg>
+      </a>
+    </header>
+
+    <main>
+      <!-- Home -->
+      <section class="view" id="view-home" data-active>
+        <div class="home">
+          <button class="btn btn-primary btn-lg" id="start">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2" /><path d="M8 12h8" /></svg>
+            Start scanning
+          </button>
+          <p class="home-note">Hold a page up to your webcam. Scans never leave your device.</p>
+        </div>
+      </section>
+
+      <!-- Scanner -->
+      <section class="view" id="view-scan" inert>
+        <div class="stage" id="stage">
+          <video id="video" playsinline muted></video>
+          <canvas id="overlay" aria-hidden="true"></canvas>
+          <div class="flash" id="flash"></div>
+          <div class="hint" id="hint" role="status" aria-live="polite">Starting camera…</div>
+          <button class="icon-btn glass stage-close" id="close-scan" aria-label="Close scanner" title="Close">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+          <button class="icon-btn glass stage-switch" id="switch-camera" aria-label="Switch camera" title="Switch camera" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9a8 8 0 0 1 14.5-3.5L20 7M20 3v4h-4M20 15a8 8 0 0 1-14.5 3.5L4 17M4 21v-4h4" /></svg>
+          </button>
+          <div class="stage-message" id="stage-message" hidden>
+            <p id="stage-message-text"></p>
+            <button class="btn btn-primary" id="stage-message-action">Try again</button>
+          </div>
+        </div>
+        <div class="controls">
+          <div class="segmented" role="radiogroup" aria-label="Capture mode">
+            <button role="radio" data-mode="auto" aria-checked="true">Auto</button>
+            <button role="radio" data-mode="manual" aria-checked="false">Manual</button>
+          </div>
+          <button class="shutter" id="shutter" aria-label="Capture page (Space)" title="Capture (Space)" disabled>
+            <svg class="shutter-ring" viewBox="0 0 80 80" aria-hidden="true">
+              <circle cx="40" cy="40" r="37" class="track" />
+              <circle cx="40" cy="40" r="37" class="progress" id="shutter-progress" />
+            </svg>
+            <span class="shutter-core"></span>
+          </button>
+          <button class="done" id="done" disabled>
+            <span class="done-thumb" id="done-thumb" aria-hidden="true"></span>
+            <span>Done</span>
+            <span class="count" id="count">0</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Review -->
+      <section class="view" id="view-review" inert>
+        <div class="review">
+          <div class="review-head">
+            <div>
+              <h1>Your scan</h1>
+              <p class="muted" id="page-count">0 pages</p>
+            </div>
+            <div class="review-actions">
+              <button class="btn btn-ghost" id="clear">Start over</button>
+              <button class="btn btn-secondary" id="scan-more">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                Scan more
+              </button>
+              <button class="btn btn-primary" id="download">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg>
+                <span>Download PDF</span>
+              </button>
+            </div>
+          </div>
+          <ol class="grid" id="grid"></ol>
+          <div class="empty" id="empty" hidden>
+            <p>No pages yet.</p>
+            <button class="btn btn-primary" id="empty-start">Start scanning</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

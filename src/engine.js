@@ -41,10 +41,6 @@ export class Engine {
     return this.#imageCall('detect', image);
   }
 
-  locate(image, hint = null) {
-    return this.#imageCall('locate', image, { hint });
-  }
-
   // Returns { quad, geometry, pixels: ImageData } or { quad: null }.
   async process(image, { quad = null, detect = false } = {}) {
     const res = await this.#imageCall('process', image, { quad, detect });
